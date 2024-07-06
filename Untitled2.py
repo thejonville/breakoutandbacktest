@@ -148,8 +148,8 @@ if new_symbol:
 st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_symbols")
 
 # Parameters
-lookback_days = st.slider("Lookback period (days)", 5, 30, 10)
-volume_threshold = st.slider("Volume increase threshold", 1.0, 3.0, 1.5, 0.1)
+lookback_days = st.slider("Lookback period (days)", 5, 900, 10)
+volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.5, 0.1)
 
 # Run the scanner
 if st.button("Scan for Breakout Candidates"):
