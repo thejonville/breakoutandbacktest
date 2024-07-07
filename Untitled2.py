@@ -31,7 +31,7 @@ def main():
         else:
             st.write("No stocks found that meet the criteria.")
 
-def analyze_stocks_in_batches(tickers, anchored_vwap_date, period, batch_size=100):
+def analyze_stocks_in_batches(tickers, anchored_vwap_date, period, batch_size=500):
     results = []
     total_tickers = len(tickers)
     progress_bar = st.progress(0)
