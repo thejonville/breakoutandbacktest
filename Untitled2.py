@@ -72,11 +72,11 @@ def analyze_stock_data(ticker, data, anchored_vwap_date):
 
         overall_decline = (data['Close'].iloc[-1] - data['Close'].iloc[0]) / data['Close'].iloc[0]
 
-        vwap_cross = (data['Close'].iloc[-5:] > data['VWAP'].iloc[-5:]).any()
+        vwap_cross = (data['Close'].iloc[-10:] > data['VWAP'].iloc[-10:]).any()
 
-        high_close = (data['Close'].iloc[-2:] > data['VWAP'].iloc[-2:]).any()
+        high_close = (data['Close'].iloc[-5:] > data['VWAP'].iloc[-5:]).any()
 
-        buy_volume = data['Volume'].iloc[-5:].mean() > data['Volume'].mean() * 1.2
+        buy_volume = data['Volume'].iloc[-10:].mean() > data['Volume'].mean() * 1.1
 
         delta = data['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -84,16 +84,19 @@ def analyze_stock_data(ticker, data, anchored_vwap_date):
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
 
-        if overall_decline < -0.05 and (vwap_cross or high_close) and (buy_volume or rsi.iloc[-1] < 40):
+        recent_trend = (data['Close'].iloc[-1] - data['Close'].iloc[-5]) / data['Close'].iloc[-5]
+
+        if (overall_decline < 0 or recent_trend > 0) and (vwap_cross or high_close or buy_volume or rsi.iloc[-1] < 50):
             return {
                 'Ticker': ticker,
                 'Closing Price': f"${data['Close'].iloc[-1]:.2f}",
                 'Overall Decline': f"{overall_decline*100:.2f}%",
-                'VWAP Cross (5d)': "Yes" if vwap_cross else "No",
-                'Close > VWAP (2d)': "Yes" if high_close else "No",
-                'High Buy Volume (5d)': "Yes" if buy_volume else "No",
+                'Recent Trend (5d)': f"{recent_trend*100:.2f}%",
+                'VWAP Cross (10d)': "Yes" if vwap_cross else "No",
+                'Close > VWAP (5d)': "Yes" if high_close else "No",
+                'High Buy Volume (10d)': "Yes" if buy_volume else "No",
                 'RSI': f"{rsi.iloc[-1]:.2f}",
-                'Average Volume (5d)': f"{data['Volume'].iloc[-5:].mean():.0f}",
+                'Average Volume (10d)': f"{data['Volume'].iloc[-10:].mean():.0f}",
                 'Average Volume (All)': f"{data['Volume'].mean():.0f}"
             }
     return None
