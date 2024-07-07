@@ -53,8 +53,11 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
             if days_since_crossing <= lookback_days:
                 last_close = recent_data['Close'].iloc[-1]
                 last_vwap = recent_data['VWAP'].iloc[-1]
-                recent_volume = recent_data['Volume'].iloc[-1]
-                avg_volume = recent_data['Volume'].mean()
+                
+                # Calculate buy volume
+                recent_data['Buy_Volume'] = recent_data['Volume'] * (recent_data['Close'] > recent_data['Open']).astype(int)
+                recent_buy_volume = recent_data['Buy_Volume'].iloc[-1]
+                avg_buy_volume = recent_data['Buy_Volume'].mean()
                 
                 return {
                     'Symbol': symbol,
@@ -62,7 +65,7 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                     'Days Since Crossing': days_since_crossing,
                     'Close': last_close,
                     'VWAP': last_vwap,
-                    'Volume Increase': recent_volume / avg_volume,
+                    'Buy Volume Increase': recent_buy_volume / avg_buy_volume,
                     'Price/VWAP Ratio': last_close / last_vwap
                 }
     except Exception as e:
@@ -144,7 +147,7 @@ if new_symbol:
 st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_symbols")
 
 lookback_days = st.slider("Lookback period (days)", 5, 900, 10)
-volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.5, 0.1)
+volume_threshold = st.slider("Buy volume increase threshold", 0.1, 3.0, 1.5, 0.1)
 
 if st.button("Scan for VWAP Crossings"):
     with st.spinner("Scanning..."):
