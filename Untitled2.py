@@ -8,6 +8,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
+import pytz
 
 def fetch_stock_data(ticker, start_date, end_date):
     stock = yf.Ticker(ticker)
@@ -15,7 +16,7 @@ def fetch_stock_data(ticker, start_date, end_date):
     return data
 
 def calculate_avwap(data, date):
-    date = pd.to_datetime(date)
+    date = pd.to_datetime(date).tz_localize(pytz.UTC)
     data_until_date = data.loc[:date]
     return (data_until_date['Close'] * data_until_date['Volume']).sum() / data_until_date['Volume'].sum()
 
@@ -36,6 +37,10 @@ if st.button("Analyze Stocks"):
     for ticker in tickers:
         try:
             data = fetch_stock_data(ticker, start_date, end_date)
+            if data.empty:
+                st.warning(f"No data available for {ticker}")
+                continue
+            
             avwap = calculate_avwap(data, avwap_date)
             
             # Check if stock passed AVWAP in the last 3 days
@@ -47,11 +52,12 @@ if st.button("Analyze Stocks"):
             higher_than_avwap = latest_close > avwap
             
             if passed_avwap and higher_than_avwap:
+                passed_date = last_3_days[last_3_days['Close'] > avwap].index[0].tz_convert(None).date()
                 results.append({
                     'Ticker': ticker,
                     'AVWAP': avwap,
                     'Latest Close': latest_close,
-                    'Passed AVWAP Date': last_3_days[last_3_days['Close'] > avwap].index[0].date()
+                    'Passed AVWAP Date': passed_date
                 })
         
         except Exception as e:
