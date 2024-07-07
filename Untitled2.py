@@ -24,8 +24,8 @@ def scan_for_breakout_candidates(symbols, lookback_days=10, volume_threshold=1.5
 
     for symbol in symbols:
         try:
-            # Fetch data
-            data = yf.download(symbol, start=start_date, end=end_date, interval="1d")
+            # Fetch all historical data
+            data = yf.download(symbol, period="max", interval="1d")
             
             if len(data) < 2:  # Need at least 2 days of data to check for crossing
                 continue
@@ -33,19 +33,22 @@ def scan_for_breakout_candidates(symbols, lookback_days=10, volume_threshold=1.5
             # Calculate VWAP
             data['VWAP'] = calculate_vwap(data)
             
+            # Filter data for the lookback period
+            recent_data = data.loc[start_date:end_date]
+            
             # Check for VWAP crossings
-            data['Above_VWAP'] = data['Close'] > data['VWAP']
-            vwap_crossings = data['Above_VWAP'].diff().abs()
+            recent_data['Above_VWAP'] = recent_data['Close'] > recent_data['VWAP']
+            vwap_crossings = recent_data['Above_VWAP'].diff().abs()
             
             if vwap_crossings.sum() > 0:
-                last_crossing_date = data.index[vwap_crossings.astype(bool)][-1]
+                last_crossing_date = recent_data.index[vwap_crossings.astype(bool)][-1]
                 days_since_crossing = (end_date - last_crossing_date).days
                 
                 if days_since_crossing <= lookback_days:
-                    last_close = data['Close'].iloc[-1]
-                    last_vwap = data['VWAP'].iloc[-1]
-                    recent_volume = data['Volume'].iloc[-1]
-                    avg_volume = data['Volume'].mean()
+                    last_close = recent_data['Close'].iloc[-1]
+                    last_vwap = recent_data['VWAP'].iloc[-1]
+                    recent_volume = recent_data['Volume'].iloc[-1]
+                    avg_volume = recent_data['Volume'].mean()
                     
                     breakout_candidates.append({
                         'Symbol': symbol,
@@ -63,22 +66,25 @@ def scan_for_breakout_candidates(symbols, lookback_days=10, volume_threshold=1.5
     return pd.DataFrame(breakout_candidates)
 
 def backtest_breakout_strategy(symbol, start_date, end_date, lookback_days=10, volume_threshold=1.5):
-    # Fetch historical data
-    data = yf.download(symbol, start=start_date, end=end_date, interval="1d")
+    # Fetch all historical data
+    data = yf.download(symbol, period="max", interval="1d")
     
     # Calculate VWAP
     data['VWAP'] = calculate_vwap(data)
+    
+    # Filter data for the backtest period
+    backtest_data = data.loc[start_date:end_date]
     
     # Initialize results
     breakout_dates = []
     
     # Check for VWAP crossings
-    data['Above_VWAP'] = data['Close'] > data['VWAP']
-    vwap_crossings = data['Above_VWAP'].diff().abs()
+    backtest_data['Above_VWAP'] = backtest_data['Close'] > backtest_data['VWAP']
+    vwap_crossings = backtest_data['Above_VWAP'].diff().abs()
     
-    breakout_dates = data.index[vwap_crossings.astype(bool)].tolist()
+    breakout_dates = backtest_data.index[vwap_crossings.astype(bool)].tolist()
     
-    return data, breakout_dates
+    return backtest_data, breakout_dates
 
 def plot_interactive_results(data, breakout_dates, symbol):
     # Create subplot with 2 rows
