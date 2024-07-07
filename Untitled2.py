@@ -4,7 +4,6 @@
 # In[4]:
 
 
-import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -53,18 +52,8 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
             if days_since_crossing <= lookback_days:
                 last_close = recent_data['Close'].iloc[-1]
                 last_vwap = recent_data['VWAP'].iloc[-1]
-                
-                # Calculate buy and sell volume for the past 3 days
-                last_3_days = recent_data.last('3D')
-                last_3_days['Buy_Volume'] = last_3_days['Volume'] * (last_3_days['Close'] > last_3_days['Open']).astype(int)
-                last_3_days['Sell_Volume'] = last_3_days['Volume'] * (last_3_days['Close'] <= last_3_days['Open']).astype(int)
-                
-                buy_volume_3_days = last_3_days['Buy_Volume'].sum()
-                sell_volume_3_days = last_3_days['Sell_Volume'].sum()
-                buy_over_sell_volume_3_days = buy_volume_3_days / sell_volume_3_days if sell_volume_3_days != 0 else float('inf')
-                
-                recent_buy_volume = recent_data['Buy_Volume'].iloc[-1]
-                avg_buy_volume = recent_data['Buy_Volume'].mean()
+                recent_volume = recent_data['Volume'].iloc[-1]
+                avg_volume = recent_data['Volume'].mean()
                 
                 return {
                     'Symbol': symbol,
@@ -72,8 +61,7 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                     'Days Since Crossing': days_since_crossing,
                     'Close': last_close,
                     'VWAP': last_vwap,
-                    'Buy Volume Increase': recent_buy_volume / avg_buy_volume,
-                    'Buy/Sell Volume Ratio (3 Days)': buy_over_sell_volume_3_days,
+                    'Volume Increase': recent_volume / avg_volume,
                     'Price/VWAP Ratio': last_close / last_vwap
                 }
     except Exception as e:
@@ -155,7 +143,7 @@ if new_symbol:
 st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_symbols")
 
 lookback_days = st.slider("Lookback period (days)", 5, 900, 10)
-volume_threshold = st.slider("Buy volume increase threshold", 0.1, 3.0, 1.5, 0.1)
+volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.5, 0.1)
 
 if st.button("Scan for VWAP Crossings"):
     with st.spinner("Scanning..."):
@@ -163,8 +151,6 @@ if st.button("Scan for VWAP Crossings"):
     
     if not candidates.empty:
         st.subheader(f"Stocks that crossed VWAP within the last {lookback_days} days:")
-        # Format the 'Buy/Sell Volume Ratio (3 Days)' column
-        candidates['Buy/Sell Volume Ratio (3 Days)'] = candidates['Buy/Sell Volume Ratio (3 Days)'].apply(lambda x: f"{x:.2f}")
         st.dataframe(candidates)
     else:
         st.info(f"No stocks found that crossed VWAP within the last {lookback_days} days.")
@@ -193,3 +179,4 @@ if st.button("Run Backtest"):
 
 st.subheader("All Stock Symbols:")
 st.write(", ".join(symbols))
+
