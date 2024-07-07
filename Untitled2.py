@@ -8,7 +8,6 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
-import concurrent.futures
 
 def main():
     st.title("Stock Analysis App")
@@ -40,7 +39,7 @@ def analyze_stocks_in_batches(tickers, anchored_vwap_date, period, batch_size=10
 
     for i in range(0, total_tickers, batch_size):
         batch = tickers[i:i+batch_size]
-        batch_results = analyze_batch(batch, anchored_vwap_date, period)
+        batch_results = analyze_batch(batch, anchored_vwap_date, period, status_text)
         results.extend(batch_results)
         
         # Update progress
@@ -52,18 +51,13 @@ def analyze_stocks_in_batches(tickers, anchored_vwap_date, period, batch_size=10
     status_text.empty()
     return pd.DataFrame(results)
 
-def analyze_batch(batch, anchored_vwap_date, period):
+def analyze_batch(batch, anchored_vwap_date, period, status_text):
     batch_results = []
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_ticker = {executor.submit(analyze_stock, ticker, anchored_vwap_date, period): ticker for ticker in batch}
-        for future in concurrent.futures.as_completed(future_to_ticker):
-            ticker = future_to_ticker[future]
-            try:
-                result = future.result()
-                if result:
-                    batch_results.append(result)
-            except Exception as exc:
-                st.warning(f"{ticker} generated an exception: {exc}")
+    for ticker in batch:
+        result = analyze_stock(ticker, anchored_vwap_date, period)
+        if result:
+            batch_results.append(result)
+        status_text.text(f"Analyzing {ticker}...")
     return batch_results
 
 def analyze_stock(ticker, anchored_vwap_date, period):
