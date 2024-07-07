@@ -88,5 +88,4 @@ st.sidebar.markdown('''
 4. Click 'Analyze' to process the data.
 5. View the results in the main panel.
 ''')
-''')
 
