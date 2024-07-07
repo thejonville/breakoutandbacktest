@@ -13,7 +13,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
 @st.cache_data
-def fetch_data_in_batches(symbols, start_date, end_date, batch_size=50):
+def fetch_data_in_batches(symbols, start_date, end_date, batch_size=100):
     all_data = {}
     found_symbols = []
     for i in range(0, len(symbols), batch_size):
