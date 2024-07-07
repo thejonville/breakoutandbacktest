@@ -10,6 +10,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+import streamlit as st
 
 @st.cache_data
 def fetch_data_in_batches(symbols, start_date, end_date, batch_size=100):
@@ -55,6 +56,11 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                 recent_volume = recent_data['Volume'].iloc[-1]
                 avg_volume = recent_data['Volume'].mean()
                 
+                # Check for buy volume increase in last 3 days
+                last_3_days_volume = recent_data['Volume'].tail(3)
+                last_3_days_avg_volume = last_3_days_volume.mean()
+                volume_increase_3d = last_3_days_avg_volume / avg_volume
+                
                 return {
                     'Symbol': symbol,
                     'Last Crossing Date': last_crossing_date.strftime('%Y-%m-%d'),
@@ -62,7 +68,8 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                     'Close': last_close,
                     'VWAP': last_vwap,
                     'Volume Increase': recent_volume / avg_volume,
-                    'Price/VWAP Ratio': last_close / last_vwap
+                    'Price/VWAP Ratio': last_close / last_vwap,
+                    'Volume Increase (3d)': volume_increase_3d
                 }
     except Exception as e:
         st.error(f"Error processing {symbol}: {e}")
@@ -87,7 +94,10 @@ def scan_for_breakout_candidates(symbols, lookback_days=10, volume_threshold=1.5
         if result:
             breakout_candidates.append(result)
     
-    return pd.DataFrame(breakout_candidates)
+    df = pd.DataFrame(breakout_candidates)
+    if not df.empty:
+        df = df.sort_values('Volume Increase (3d)', ascending=False)
+    return df
 
 def backtest_breakout_strategy(symbol, start_date, end_date, lookback_days=10, volume_threshold=1.5):
     data = yf.download(symbol, start=start_date, end=end_date)
