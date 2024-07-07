@@ -34,7 +34,7 @@ start_date = end_date - timedelta(days=period)
 
 min_date = start_date
 max_date = end_date
-default_anchor_date = start_date + timedelta(days=period // 2)
+default_anchor_date = start_date + timedelta(days=period // 1)
 anchor_date = st.date_input('Select Anchored VWAP start date', 
                             min_value=min_date, 
                             max_value=max_date, 
