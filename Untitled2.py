@@ -15,14 +15,17 @@ def fetch_stock_data(ticker, period):
     data = stock.history(period=period)
     return data
 
-def calculate_avwap(data):
-    return (data['Close'] * data['Volume']).sum() / data['Volume'].sum()
+def calculate_avwap(data, date):
+    date = pd.to_datetime(date).tz_localize(pytz.UTC)
+    data_until_date = data.loc[:date]
+    return (data_until_date['Close'] * data_until_date['Volume']).sum() / data_until_date['Volume'].sum()
 
 st.title("Stock AVWAP Analysis")
 
 # User inputs
 tickers_input = st.text_input("Enter stock tickers (comma-separated):", "AAPL,GOOGL,MSFT")
-period = st.selectbox("Select period", ['1d', '5d'])
+period = st.selectbox("Select period", ['1d', '5d', '1mo'])
+avwap_date = st.date_input("Enter AVWAP calculation date:", datetime.now().date() - timedelta(days=7))
 
 if st.button("Analyze Stocks"):
     tickers = [ticker.strip() for ticker in tickers_input.split(',')]
@@ -36,10 +39,10 @@ if st.button("Analyze Stocks"):
                 st.warning(f"No data available for {ticker}")
                 continue
             
-            avwap = calculate_avwap(data)
+            avwap = calculate_avwap(data, avwap_date)
             
             # Determine the number of days to check based on the period
-            days_to_check = 1 if period == '1d' else 3
+            days_to_check = min(3, len(data))  # Check up to the last 3 days or the length of the data
             
             # Check if stock passed AVWAP in the last days_to_check days
             last_days = data.iloc[-days_to_check:]
@@ -72,6 +75,7 @@ st.sidebar.markdown("## About")
 st.sidebar.info("This app analyzes stocks based on their AVWAP and recent price movements.")
 st.sidebar.markdown("### How to use:")
 st.sidebar.markdown("1. Enter stock tickers separated by commas.")
-st.sidebar.markdown("2. Select the analysis period (1 day or 5 days).")
-st.sidebar.markdown("3. Click 'Analyze Stocks' to see the results.")
+st.sidebar.markdown("2. Select the analysis period (1 day, 5 days, or 1 month).")
+st.sidebar.markdown("3. Select the AVWAP calculation date.")
+st.sidebar.markdown("4. Click 'Analyze Stocks' to see the results.")
 
