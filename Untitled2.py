@@ -65,17 +65,25 @@ if st.button('Analyze'):
                 vwap = data['VWAP'].iloc[-1]
                 anchored_vwap = data['Anchored_VWAP'].iloc[-1]
 
-                results.append({
-                    'Ticker': ticker,
-                    'VWAP Decline': vwap_decline,
-                    'Crossed Anchored VWAP': crossed_anchored_vwap,
-                    'Close': close_price,
-                    'VWAP': vwap,
-                    'Anchored VWAP': anchored_vwap,
-                    'Buy Volume (2d)': buy_volume_2d,
-                    'Close > VWAP': close_price > vwap,
-                    'Close > Anchored VWAP': close_price > anchored_vwap
-                })
+                # Check if the stock passed VWAP within the last 5 days
+                passed_vwap_recently = any(
+                    (data['Close'].iloc[i] > data['VWAP'].iloc[i] and 
+                     data['Close'].iloc[i-1] <= data['VWAP'].iloc[i-1])
+                    for i in range(-5, 0)
+                )
+
+                if passed_vwap_recently:
+                    results.append({
+                        'Ticker': ticker,
+                        'VWAP Decline': vwap_decline,
+                        'Crossed Anchored VWAP': crossed_anchored_vwap,
+                        'Close': close_price,
+                        'VWAP': vwap,
+                        'Anchored VWAP': anchored_vwap,
+                        'Buy Volume (2d)': buy_volume_2d,
+                        'Close > VWAP': close_price > vwap,
+                        'Close > Anchored VWAP': close_price > anchored_vwap
+                    })
             else:
                 st.warning(f"No data available for {ticker}")
         except Exception as e:
