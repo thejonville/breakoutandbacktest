@@ -4,172 +4,70 @@
 # In[4]:
 
 
+import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
-import streamlit as st
 
-@st.cache_data
-def fetch_data_in_batches(symbols, start_date, end_date, batch_size=100):
-    all_data = {}
-    found_symbols = []
-    for i in range(0, len(symbols), batch_size):
-        batch = symbols[i:i+batch_size]
-        batch_data = yf.download(batch, start=start_date, end=end_date, group_by='ticker')
-        if len(batch) == 1:
-            if not batch_data.empty:
-                all_data[batch[0]] = batch_data
-                found_symbols.append(batch[0])
-        else:
-            for symbol in batch:
-                if symbol in batch_data.columns.levels[0]:
-                    all_data[symbol] = batch_data[symbol]
-                    found_symbols.append(symbol)
-    return all_data, found_symbols
+def fetch_stock_data(ticker, start_date, end_date):
+    stock = yf.Ticker(ticker)
+    data = stock.history(start=start_date, end=end_date)
+    return data
 
-def calculate_anchored_vwap(data, anchor_date):
-    data = data.loc[anchor_date:]
-    v = data['Volume'].values
-    tp = (data['High'].values + data['Low'].values + data['Close'].values) / 3
-    return pd.Series((tp * v).cumsum() / v.cumsum(), index=data.index)
+def calculate_avwap(data, date):
+    date = pd.to_datetime(date)
+    data_until_date = data.loc[:date]
+    return (data_until_date['Close'] * data_until_date['Volume']).sum() / data_until_date['Volume'].sum()
 
-def process_symbol(symbol, data, start_date, end_date, anchor_date, volume_threshold):
-    try:
-        if len(data) < 2:
-            return None
-        data['AVWAP'] = calculate_anchored_vwap(data, anchor_date)
-        recent_data = data.loc[start_date:end_date]
-        recent_data['Above_AVWAP'] = recent_data['Close'] > recent_data['AVWAP']
-        avwap_crossings = recent_data['Above_AVWAP'].diff()
-        if (avwap_crossings == 1).any():  # Check for upward crossings only
-            last_crossing_date = recent_data.index[avwap_crossings == 1][-1]
-            days_since_crossing = (end_date.date() - last_crossing_date.date()).days
-            if days_since_crossing <= 2:  # Fixed to 2 days
-                last_close = recent_data['Close'].iloc[-1]
-                last_avwap = recent_data['AVWAP'].iloc[-1]
-                if last_close > last_avwap:
-                    recent_volume = recent_data['Volume'].iloc[-1]
-                    avg_volume = recent_data['Volume'].mean()
-                    last_3_days_volume = recent_data['Volume'].tail(3)
-                    last_3_days_avg_volume = last_3_days_volume.mean()
-                    volume_increase_3d = last_3_days_avg_volume / avg_volume
-                    if volume_increase_3d >= volume_threshold:
-                        return {
-                            'Symbol': symbol,
-                            'Last Crossing Date': last_crossing_date.strftime('%Y-%m-%d'),
-                            'Days Since Crossing': days_since_crossing,
-                            'Close': last_close,
-                            'AVWAP': last_avwap,
-                            'Volume Increase': recent_volume / avg_volume,
-                            'Price/AVWAP Ratio': last_close / last_avwap,
-                            'Volume Increase (3d)': volume_increase_3d,
-                            'Price-AVWAP Difference': last_close - last_avwap
-                        }
-    except Exception as e:
-        st.error(f"Error processing {symbol}: {e}")
-    return None
+st.title("Stock AVWAP Analysis")
 
-def scan_for_breakout_candidates(symbols, anchor_date, volume_threshold=1.5, min_price_avwap_diff=0):
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=2)  # Fixed to 2 days
-    all_data, found_symbols = fetch_data_in_batches(symbols, anchor_date, end_date)
+# User inputs
+tickers_input = st.text_input("Enter stock tickers (comma-separated):", "AAPL,GOOGL,MSFT")
+avwap_date = st.date_input("Enter AVWAP calculation date:", datetime.now().date() - timedelta(days=7))
 
-    breakout_candidates = []
-    for symbol in found_symbols:
-        result = process_symbol(symbol, all_data[symbol], start_date, end_date, anchor_date, volume_threshold)
-        if result and result['Price-AVWAP Difference'] >= min_price_avwap_diff:
-            breakout_candidates.append(result)
-
-    if breakout_candidates:
-        df = pd.DataFrame(breakout_candidates)
-        df = df.sort_values('Volume Increase (3d)', ascending=False)
-        return df
+if st.button("Analyze Stocks"):
+    tickers = [ticker.strip() for ticker in tickers_input.split(',')]
+    
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=30)  # Fetch 30 days of data
+    
+    results = []
+    
+    for ticker in tickers:
+        try:
+            data = fetch_stock_data(ticker, start_date, end_date)
+            avwap = calculate_avwap(data, avwap_date)
+            
+            # Check if stock passed AVWAP in the last 3 days
+            last_3_days = data.iloc[-3:]
+            passed_avwap = (last_3_days['Close'] > avwap).any()
+            
+            # Check if the latest closing price is higher than AVWAP
+            latest_close = data['Close'].iloc[-1]
+            higher_than_avwap = latest_close > avwap
+            
+            if passed_avwap and higher_than_avwap:
+                results.append({
+                    'Ticker': ticker,
+                    'AVWAP': avwap,
+                    'Latest Close': latest_close,
+                    'Passed AVWAP Date': last_3_days[last_3_days['Close'] > avwap].index[0].date()
+                })
+        
+        except Exception as e:
+            st.error(f"Error fetching data for {ticker}: {str(e)}")
+    
+    if results:
+        st.subheader("Stocks that passed AVWAP in the last 3 days and have a higher closing price:")
+        df_results = pd.DataFrame(results)
+        st.dataframe(df_results)
     else:
-        return pd.DataFrame()
+        st.info("No stocks found that meet the criteria.")
 
-def backtest_breakout_strategy(symbol, start_date, end_date, anchor_date):
-    data = yf.download(symbol, start=anchor_date, end=end_date)
-    data['AVWAP'] = calculate_anchored_vwap(data, anchor_date)
-    data['Above_AVWAP'] = data['Close'] > data['AVWAP']
-    avwap_crossings = data['Above_AVWAP'].diff().abs()
-    breakout_dates = data.index[avwap_crossings.astype(bool)].tolist()
-    return data, breakout_dates
-
-def plot_interactive_results(data, breakout_dates, symbol):
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, 
-                        subplot_titles=(f'{symbol} Price and AVWAP', 'Volume'), row_heights=[0.7, 0.3])
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Close Price', line=dict(color='blue')), row=1, col=1)
-    fig.add_trace(go.Scatter(x=data.index, y=data['AVWAP'], name='AVWAP', line=dict(color='orange')), row=1, col=1)
-    fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume', marker_color='lightblue'), row=2, col=1)
-    for date in breakout_dates:
-        fig.add_trace(go.Scatter(x=[date, date], y=[data['Low'].min(), data['High'].max()],
-                                 mode='lines', name='AVWAP Crossing', line=dict(color='red', width=1, dash='dash')), row=1, col=1)
-    fig.update_layout(height=800, title_text=f"{symbol} - Interactive Chart with AVWAP Crossings",
-                      showlegend=True, hovermode="x unified")
-    fig.update_xaxes(title_text="Date", row=2, col=1)
-    fig.update_yaxes(title_text="Price", row=1, col=1)
-    fig.update_yaxes(title_text="Volume", row=2, col=1)
-    return fig
-
-st.title("Stock Anchored VWAP Crossing Scanner and Backtester")
-
-default_symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'VOO', 'TSLA', 'NVDA', 'JPM', 'V', 'JNJ']
-symbols_input = st.text_area("Enter stock symbols (comma-separated):", ", ".join(default_symbols))
-symbols = [symbol.strip() for symbol in symbols_input.split(',')]
-
-search_query = st.text_input("Search for a stock symbol:")
-if search_query:
-    matching_symbols = [symbol for symbol in symbols if search_query.upper() in symbol.upper()]
-    if matching_symbols:
-        st.write("Matching symbols:", ", ".join(matching_symbols))
-    else:
-        st.write("No matching symbols found.")
-
-new_symbol = st.text_input("Add a new stock symbol:")
-if new_symbol:
-    if new_symbol.upper() not in [symbol.upper() for symbol in symbols]:
-        symbols.append(new_symbol.upper())
-        st.success(f"Added {new_symbol.upper()} to the list of symbols.")
-    else:
-        st.warning(f"{new_symbol.upper()} is already in the list of symbols.")
-
-st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_symbols")
-
-volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.0, 0.1)
-min_price_avwap_diff = st.slider("Minimum Price-AVWAP Difference", 0.0, 10.0, 0.0, 0.01)
-anchor_date = st.date_input("Anchor date for AVWAP", datetime(2023, 1, 1))
-
-if st.button("Scan for AVWAP Crossings"):
-    with st.spinner("Scanning..."):
-        candidates = scan_for_breakout_candidates(symbols, anchor_date, volume_threshold, min_price_avwap_diff)
-        if not candidates.empty:
-            st.subheader("Stocks that crossed AVWAP within the last 2 days and have a closing price higher than AVWAP:")
-            st.dataframe(candidates)
-        else:
-            st.info("No stocks found that crossed AVWAP within the last 2 days and have a closing price higher than AVWAP.")
-
-st.subheader("Backtest AVWAP Crossing Strategy")
-backtest_symbol = st.selectbox("Select a stock symbol for backtesting:", symbols)
-start_date = st.date_input("Start date", datetime(2023, 1, 1))
-end_date = st.date_input("End date", datetime.now())
-
-if st.button("Run Backtest"):
-    with st.spinner("Backtesting..."):
-        data, breakout_dates = backtest_breakout_strategy(backtest_symbol, start_date, end_date, anchor_date)
-        if breakout_dates:
-            st.subheader(f"Backtest Results for {backtest_symbol}")
-            st.write(f"Number of AVWAP crossings identified: {len(breakout_dates)}")
-            st.write("AVWAP crossing dates:")
-            for date in breakout_dates:
-                st.write(date.strftime('%Y-%m-%d'))
-            fig = plot_interactive_results(data, breakout_dates, backtest_symbol)
-            st.plotly_chart(fig)
-        else:
-            st.info("No AVWAP crossings found during the backtest period.")
-
-st.subheader("All Stock Symbols:")
-st.write(", ".join(symbols))
+st.sidebar.markdown("## About")
+st.sidebar.info("This app analyzes stocks based on their AVWAP and recent price movements.")
+st.sidebar.markdown("### How to use:")
+st.sidebar.markdown("1. Enter stock tickers separated by commas.")
+st.sidebar.markdown("2. Select the AVWAP calculation date.")
+st.sidebar.markdown("3. Click 'Analyze Stocks' to see the results.")
 
