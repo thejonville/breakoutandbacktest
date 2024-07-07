@@ -40,27 +40,22 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date, lookback_day
     try:
         if len(data) < 2:
             return None
-
         data['AVWAP'] = calculate_anchored_vwap(data, anchor_date)
         recent_data = data.loc[start_date:end_date]
         recent_data['Above_AVWAP'] = recent_data['Close'] > recent_data['AVWAP']
         avwap_crossings = recent_data['Above_AVWAP'].diff().abs()
-
         if avwap_crossings.sum() > 0:
             last_crossing_date = recent_data.index[avwap_crossings.astype(bool)][-1]
             days_since_crossing = (end_date.date() - last_crossing_date.date()).days
-
             if days_since_crossing <= lookback_days:
                 last_close = recent_data['Close'].iloc[-1]
                 last_avwap = recent_data['AVWAP'].iloc[-1]
-
                 if last_close > last_avwap:
                     recent_volume = recent_data['Volume'].iloc[-1]
                     avg_volume = recent_data['Volume'].mean()
                     last_3_days_volume = recent_data['Volume'].tail(3)
                     last_3_days_avg_volume = last_3_days_volume.mean()
                     volume_increase_3d = last_3_days_avg_volume / avg_volume
-
                     return {
                         'Symbol': symbol,
                         'Last Crossing Date': last_crossing_date.strftime('%Y-%m-%d'),
@@ -69,30 +64,27 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date, lookback_day
                         'AVWAP': last_avwap,
                         'Volume Increase': recent_volume / avg_volume,
                         'Price/AVWAP Ratio': last_close / last_avwap,
-                        'Volume Increase (3d)': volume_increase_3d
+                        'Volume Increase (3d)': volume_increase_3d,
+                        'Price-AVWAP Difference': last_close - last_avwap
                     }
-
     except Exception as e:
         st.error(f"Error processing {symbol}: {e}")
     return None
 
-def scan_for_breakout_candidates(symbols, anchor_date, lookback_days=10, volume_threshold=1.5):
+def scan_for_breakout_candidates(symbols, anchor_date, lookback_days=10, volume_threshold=1.5, min_price_avwap_diff=0):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=lookback_days)
-    all_data, found_symbols = fetch_data_in_batches(symbols, anchor_date, end_date)
-
+    all_data, found_symbols = fetch_data_in_batches(symbols, start_date, end_date)
     st.subheader("Symbols Found:")
     st.write(", ".join(found_symbols))
     st.subheader("Symbols Not Found:")
     not_found_symbols = list(set(symbols) - set(found_symbols))
     st.write(", ".join(not_found_symbols))
-
     breakout_candidates = []
     for symbol in found_symbols:
         result = process_symbol(symbol, all_data[symbol], start_date, end_date, anchor_date, lookback_days, volume_threshold)
-        if result:
+        if result and result['Price-AVWAP Difference'] >= min_price_avwap_diff:
             breakout_candidates.append(result)
-
     if breakout_candidates:
         df = pd.DataFrame(breakout_candidates)
         df = df.sort_values('Volume Increase (3d)', ascending=False)
@@ -112,21 +104,17 @@ def plot_interactive_results(data, breakout_dates, symbol):
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                         vertical_spacing=0.1, subplot_titles=(f'{symbol} Price and AVWAP', 'Volume'),
                         row_heights=[0.7, 0.3])
-
     fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name='Close Price', line=dict(color='blue')), row=1, col=1)
     fig.add_trace(go.Scatter(x=data.index, y=data['AVWAP'], name='AVWAP', line=dict(color='orange')), row=1, col=1)
     fig.add_trace(go.Bar(x=data.index, y=data['Volume'], name='Volume', marker_color='lightblue'), row=2, col=1)
-
     for date in breakout_dates:
         fig.add_trace(go.Scatter(x=[date, date], y=[data['Low'].min(), data['High'].max()],
                                  mode='lines', name='AVWAP Crossing', line=dict(color='red', width=1, dash='dash')), row=1, col=1)
-
     fig.update_layout(height=800, title_text=f"{symbol} - Interactive Chart with AVWAP Crossings",
                       showlegend=True, hovermode="x unified")
     fig.update_xaxes(title_text="Date", row=2, col=1)
     fig.update_yaxes(title_text="Price", row=1, col=1)
     fig.update_yaxes(title_text="Volume", row=2, col=1)
-
     return fig
 
 st.title("Stock Anchored VWAP Crossing Scanner and Backtester")
@@ -155,11 +143,12 @@ st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_
 
 lookback_days = st.slider("Lookback period (days)", 5, 900, 10)
 volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.5, 0.1)
+min_price_avwap_diff = st.slider("Minimum Price-AVWAP Difference", 0.0, 100.0, 0.0, 0.1)
 anchor_date = st.date_input("Anchor date for AVWAP", datetime(2023, 1, 1))
 
 if st.button("Scan for AVWAP Crossings"):
     with st.spinner("Scanning..."):
-        candidates = scan_for_breakout_candidates(symbols, anchor_date, lookback_days, volume_threshold)
+        candidates = scan_for_breakout_candidates(symbols, anchor_date, lookback_days, volume_threshold, min_price_avwap_diff)
         if not candidates.empty:
             st.subheader(f"Stocks that crossed AVWAP within the last {lookback_days} days and have a closing price higher than AVWAP:")
             st.dataframe(candidates)
