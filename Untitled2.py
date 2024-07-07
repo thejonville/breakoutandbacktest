@@ -16,7 +16,7 @@ def fetch_stock_data(ticker, period):
     return data
 
 def calculate_avwap(data, date):
-    date = pd.to_datetime(date).tz_localize(pytz.EST)
+    date = pd.to_datetime(date).tz_localize(pytz.UTC)
     data_until_date = data.loc[:date]
     return (data_until_date['Close'] * data_until_date['Volume']).sum() / data_until_date['Volume'].sum()
 
