@@ -13,7 +13,7 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 
 @st.cache_data
-def fetch_data_in_batches(symbols, start_date, end_date, batch_size=100):
+def fetch_data_in_batches(symbols, start_date, end_date, batch_size=200):
     all_data = {}
     found_symbols = []
     for i in range(0, len(symbols), batch_size):
@@ -54,8 +54,16 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                 last_close = recent_data['Close'].iloc[-1]
                 last_vwap = recent_data['VWAP'].iloc[-1]
                 
-                # Calculate buy volume
+                # Calculate buy and sell volume
                 recent_data['Buy_Volume'] = recent_data['Volume'] * (recent_data['Close'] > recent_data['Open']).astype(int)
+                recent_data['Sell_Volume'] = recent_data['Volume'] * (recent_data['Close'] <= recent_data['Open']).astype(int)
+                
+                # Calculate buy over sell volume since crossing VWAP
+                data_since_crossing = recent_data.loc[last_crossing_date:]
+                buy_volume_since_crossing = data_since_crossing['Buy_Volume'].sum()
+                sell_volume_since_crossing = data_since_crossing['Sell_Volume'].sum()
+                buy_over_sell_volume = buy_volume_since_crossing / sell_volume_since_crossing if sell_volume_since_crossing != 0 else float('inf')
+                
                 recent_buy_volume = recent_data['Buy_Volume'].iloc[-1]
                 avg_buy_volume = recent_data['Buy_Volume'].mean()
                 
@@ -66,6 +74,7 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
                     'Close': last_close,
                     'VWAP': last_vwap,
                     'Buy Volume Increase': recent_buy_volume / avg_buy_volume,
+                    'Buy Over Sell Volume Since Crossing': buy_over_sell_volume,
                     'Price/VWAP Ratio': last_close / last_vwap
                 }
     except Exception as e:
@@ -155,6 +164,8 @@ if st.button("Scan for VWAP Crossings"):
     
     if not candidates.empty:
         st.subheader(f"Stocks that crossed VWAP within the last {lookback_days} days:")
+        # Format the 'Buy Over Sell Volume Since Crossing' column
+        candidates['Buy Over Sell Volume Since Crossing'] = candidates['Buy Over Sell Volume Since Crossing'].apply(lambda x: f"{x:.2f}")
         st.dataframe(candidates)
     else:
         st.info(f"No stocks found that crossed VWAP within the last {lookback_days} days.")
