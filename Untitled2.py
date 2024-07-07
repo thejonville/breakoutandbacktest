@@ -12,14 +12,11 @@ from datetime import datetime, timedelta
 def main():
     st.title("Stock Analysis App")
 
-    # Get user input for stock tickers
     tickers = st.text_input("Enter stock tickers (separated by commas, no spaces):")
     ticker_list = [ticker.strip() for ticker in tickers.split(",")]
 
-    # Get user input for anchored VWAP date
     anchored_vwap_date = st.date_input("Select anchored VWAP date")
 
-    # Get user input for data period
     period_options = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
     selected_period = st.selectbox("Select data period", period_options)
 
@@ -42,7 +39,6 @@ def analyze_stocks_in_batches(tickers, anchored_vwap_date, period, batch_size=50
         batch_results = analyze_batch(batch, anchored_vwap_date, period)
         results.extend(batch_results)
         
-        # Update progress
         progress = min((i + batch_size) / total_tickers, 1.0)
         progress_bar.progress(progress)
         status_text.text(f"Processed {min(i + batch_size, total_tickers)} out of {total_tickers} tickers")
@@ -55,7 +51,6 @@ def analyze_batch(batch, anchored_vwap_date, period):
     batch_results = []
     try:
         end_date = datetime.now().date()
-        # Download data for all tickers in the batch at once
         data = yf.download(" ".join(batch), start=anchored_vwap_date, end=end_date, period=period, group_by='ticker')
         
         for ticker in batch:
@@ -73,30 +68,32 @@ def analyze_batch(batch, anchored_vwap_date, period):
 
 def analyze_stock_data(ticker, data, anchored_vwap_date):
     if len(data) > 0:
-        # Calculate VWAP from the anchored date
         data['VWAP'] = (data['Close'] * data['Volume']).cumsum() / data['Volume'].cumsum()
 
-        # Check for strong overall decline since the anchored date
         overall_decline = (data['Close'].iloc[-1] - data['Close'].iloc[0]) / data['Close'].iloc[0]
 
-        # Check for VWAP crossing within last 2 days
-        vwap_cross = (data['Close'].iloc[-2:] > data['VWAP'].iloc[-2:]).any()
+        vwap_cross = (data['Close'].iloc[-5:] > data['VWAP'].iloc[-5:]).any()
 
-        # Check for closing price higher than VWAP in the last day
-        high_close = data['Close'].iloc[-1] > data['VWAP'].iloc[-1]
+        high_close = (data['Close'].iloc[-2:] > data['VWAP'].iloc[-2:]).any()
 
-        # Check for high buy volume in the last 2 days
-        buy_volume = data['Volume'].iloc[-2:].mean() > data['Volume'].mean() * 1.5
+        buy_volume = data['Volume'].iloc[-5:].mean() > data['Volume'].mean() * 1.2
 
-        if overall_decline < -0.1 and vwap_cross and high_close and buy_volume:
+        delta = data['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+
+        if overall_decline < -0.05 and (vwap_cross or high_close) and (buy_volume or rsi.iloc[-1] < 40):
             return {
                 'Ticker': ticker,
                 'Closing Price': f"${data['Close'].iloc[-1]:.2f}",
                 'Overall Decline': f"{overall_decline*100:.2f}%",
-                'VWAP Cross': "Yes",
-                'Close > VWAP': "Yes",
-                'High Buy Volume': "Yes",
-                'Average Volume (2d)': f"{data['Volume'].iloc[-2:].mean():.0f}",
+                'VWAP Cross (5d)': "Yes" if vwap_cross else "No",
+                'Close > VWAP (2d)': "Yes" if high_close else "No",
+                'High Buy Volume (5d)': "Yes" if buy_volume else "No",
+                'RSI': f"{rsi.iloc[-1]:.2f}",
+                'Average Volume (5d)': f"{data['Volume'].iloc[-5:].mean():.0f}",
                 'Average Volume (All)': f"{data['Volume'].mean():.0f}"
             }
     return None
