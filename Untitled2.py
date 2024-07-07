@@ -43,11 +43,11 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date, volume_thres
         data['AVWAP'] = calculate_anchored_vwap(data, anchor_date)
         recent_data = data.loc[start_date:end_date]
         recent_data['Above_AVWAP'] = recent_data['Close'] > recent_data['AVWAP']
-        avwap_crossings = recent_data['Above_AVWAP'].diff().abs()
-        if avwap_crossings.sum() > 0:
-            last_crossing_date = recent_data.index[avwap_crossings.astype(bool)][-1]
+        avwap_crossings = recent_data['Above_AVWAP'].diff()
+        if (avwap_crossings == 1).any():  # Check for upward crossings only
+            last_crossing_date = recent_data.index[avwap_crossings == 1][-1]
             days_since_crossing = (end_date.date() - last_crossing_date.date()).days
-            if days_since_crossing <= 2:  # Changed to 2 days
+            if days_since_crossing <= 2:  # Fixed to 2 days
                 last_close = recent_data['Close'].iloc[-1]
                 last_avwap = recent_data['AVWAP'].iloc[-1]
                 if last_close > last_avwap:
@@ -74,7 +74,7 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date, volume_thres
 
 def scan_for_breakout_candidates(symbols, anchor_date, volume_threshold=1.5, min_price_avwap_diff=0):
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=2)  # Changed to 2 days
+    start_date = end_date - timedelta(days=2)  # Fixed to 2 days
     all_data, found_symbols = fetch_data_in_batches(symbols, anchor_date, end_date)
 
     breakout_candidates = []
