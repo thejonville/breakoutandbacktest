@@ -59,7 +59,10 @@ if st.button('Analyze'):
                 results.append({
                     'Ticker': ticker,
                     'VWAP Decline': vwap_decline,
-                    'Crossed Anchored VWAP': crossed_anchored_vwap
+                    'Crossed Anchored VWAP': crossed_anchored_vwap,
+                    'Close': data['Close'].iloc[-1],
+                    'VWAP': data['VWAP'].iloc[-1],
+                    'Anchored VWAP': data['Anchored_VWAP'].iloc[-1]
                 })
             else:
                 st.warning(f"No data available for {ticker}")
@@ -69,6 +72,10 @@ if st.button('Analyze'):
 
     if results:
         df_results = pd.DataFrame(results)
+        df_results['Close'] = df_results['Close'].round(2)
+        df_results['VWAP'] = df_results['VWAP'].round(2)
+        df_results['Anchored VWAP'] = df_results['Anchored VWAP'].round(2)
+        
         st.subheader('Analysis Results')
         st.dataframe(df_results)
 
