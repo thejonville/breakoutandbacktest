@@ -36,7 +36,7 @@ def calculate_anchored_vwap(data, anchor_date):
     tp = (data['High'].values + data['Low'].values + data['Close'].values) / 3
     return pd.Series((tp * v).cumsum() / v.cumsum(), index=data.index)
 
-def process_symbol(symbol, data, start_date, end_date, anchor_date):
+def process_symbol(symbol, data, start_date, end_date, anchor_date, volume_threshold):
     try:
         if len(data) < 2:
             return None
@@ -47,7 +47,7 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date):
         if avwap_crossings.sum() > 0:
             last_crossing_date = recent_data.index[avwap_crossings.astype(bool)][-1]
             days_since_crossing = (end_date.date() - last_crossing_date.date()).days
-            if days_since_crossing <= 2:
+            if days_since_crossing <= 2:  # Changed to 2 days
                 last_close = recent_data['Close'].iloc[-1]
                 last_avwap = recent_data['AVWAP'].iloc[-1]
                 if last_close > last_avwap:
@@ -56,30 +56,33 @@ def process_symbol(symbol, data, start_date, end_date, anchor_date):
                     last_3_days_volume = recent_data['Volume'].tail(3)
                     last_3_days_avg_volume = last_3_days_volume.mean()
                     volume_increase_3d = last_3_days_avg_volume / avg_volume
-                    return {
-                        'Symbol': symbol,
-                        'Last Crossing Date': last_crossing_date.strftime('%Y-%m-%d'),
-                        'Days Since Crossing': days_since_crossing,
-                        'Close': last_close,
-                        'AVWAP': last_avwap,
-                        'Volume Increase': recent_volume / avg_volume,
-                        'Price/AVWAP Ratio': last_close / last_avwap,
-                        'Volume Increase (3d)': volume_increase_3d,
-                        'Price-AVWAP Difference': last_close - last_avwap
-                    }
+                    if volume_increase_3d >= volume_threshold:
+                        return {
+                            'Symbol': symbol,
+                            'Last Crossing Date': last_crossing_date.strftime('%Y-%m-%d'),
+                            'Days Since Crossing': days_since_crossing,
+                            'Close': last_close,
+                            'AVWAP': last_avwap,
+                            'Volume Increase': recent_volume / avg_volume,
+                            'Price/AVWAP Ratio': last_close / last_avwap,
+                            'Volume Increase (3d)': volume_increase_3d,
+                            'Price-AVWAP Difference': last_close - last_avwap
+                        }
     except Exception as e:
         st.error(f"Error processing {symbol}: {e}")
     return None
 
 def scan_for_breakout_candidates(symbols, anchor_date, volume_threshold=1.5, min_price_avwap_diff=0):
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=2)
+    start_date = end_date - timedelta(days=2)  # Changed to 2 days
     all_data, found_symbols = fetch_data_in_batches(symbols, anchor_date, end_date)
+
     breakout_candidates = []
     for symbol in found_symbols:
-        result = process_symbol(symbol, all_data[symbol], start_date, end_date, anchor_date)
-        if result and result['Volume Increase'] >= volume_threshold and result['Price-AVWAP Difference'] >= min_price_avwap_diff:
+        result = process_symbol(symbol, all_data[symbol], start_date, end_date, anchor_date, volume_threshold)
+        if result and result['Price-AVWAP Difference'] >= min_price_avwap_diff:
             breakout_candidates.append(result)
+
     if breakout_candidates:
         df = pd.DataFrame(breakout_candidates)
         df = df.sort_values('Volume Increase (3d)', ascending=False)
@@ -135,8 +138,8 @@ if new_symbol:
 
 st.text_area("Current list of stock symbols:", ", ".join(symbols), key="updated_symbols")
 
-volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.5, 0.1)
-min_price_avwap_diff = st.slider("Minimum Price-AVWAP Difference", 0.0, 100.0, 0.0, 0.1)
+volume_threshold = st.slider("Volume increase threshold", 0.1, 3.0, 1.0, 0.1)
+min_price_avwap_diff = st.slider("Minimum Price-AVWAP Difference", 0.0, 10.0, 0.0, 0.01)
 anchor_date = st.date_input("Anchor date for AVWAP", datetime(2023, 1, 1))
 
 if st.button("Scan for AVWAP Crossings"):
