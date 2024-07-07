@@ -15,8 +15,9 @@ def calculate_vwap(data):
     tp = (data['High'] + data['Low'] + data['Close']) / 3
     return np.cumsum(tp * v) / np.cumsum(v)
 
-def calculate_anchored_vwap(data):
-    return calculate_vwap(data.iloc[::-1])[::-1]
+def calculate_anchored_vwap(data, anchor_date):
+    anchor_index = data.index.get_loc(anchor_date, method='nearest')
+    return calculate_vwap(data.iloc[anchor_index:])
 
 st.title('Stock Analysis App')
 
@@ -24,10 +25,20 @@ st.title('Stock Analysis App')
 tickers = st.text_input('Enter stock tickers (comma-separated)', 'AAPL,GOOGL,MSFT')
 period = st.slider('Select period (in days)', 1, 365, 30)
 
+end_date = datetime.now()
+start_date = end_date - timedelta(days=period)
+
+# Anchored VWAP date selection
+min_date = start_date
+max_date = end_date
+default_anchor_date = start_date + timedelta(days=period // 2)
+anchor_date = st.date_input('Select Anchored VWAP start date', 
+                            min_value=min_date, 
+                            max_value=max_date, 
+                            value=default_anchor_date)
+
 if st.button('Analyze'):
     tickers = [ticker.strip() for ticker in tickers.split(',')]
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=period)
 
     results = []
 
@@ -36,7 +47,7 @@ if st.button('Analyze'):
             data = yf.download(ticker, start=start_date, end=end_date)
             if len(data) > 0:
                 data['VWAP'] = calculate_vwap(data)
-                data['Anchored_VWAP'] = calculate_anchored_vwap(data)
+                data['Anchored_VWAP'] = calculate_anchored_vwap(data, pd.Timestamp(anchor_date))
 
                 vwap_decline = data['VWAP'].iloc[-1] < data['VWAP'].iloc[0]
                 crossed_anchored_vwap = any(
@@ -73,7 +84,9 @@ st.sidebar.markdown('''
 ## How to use this app:
 1. Enter stock tickers separated by commas.
 2. Select the period for analysis (up to 365 days).
-3. Click 'Analyze' to process the data.
-4. View the results in the main panel.
+3. Choose the Anchored VWAP start date.
+4. Click 'Analyze' to process the data.
+5. View the results in the main panel.
+''')
 ''')
 
