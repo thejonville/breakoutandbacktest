@@ -11,16 +11,24 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
-import multiprocessing
 
 @st.cache_data
 def fetch_data_in_batches(symbols, start_date, end_date, batch_size=50):
     all_data = {}
+    found_symbols = []
     for i in range(0, len(symbols), batch_size):
         batch = symbols[i:i+batch_size]
         batch_data = yf.download(batch, start=start_date, end=end_date, group_by='ticker')
-        all_data.update(batch_data)
-    return all_data
+        if len(batch) == 1:
+            if not batch_data.empty:
+                all_data[batch[0]] = batch_data
+                found_symbols.append(batch[0])
+        else:
+            for symbol in batch:
+                if symbol in batch_data.columns.levels[0]:
+                    all_data[symbol] = batch_data[symbol]
+                    found_symbols.append(symbol)
+    return all_data, found_symbols
 
 def calculate_vwap(data):
     v = data['Volume'].values
@@ -40,7 +48,7 @@ def process_symbol(symbol, data, start_date, end_date, lookback_days, volume_thr
         
         if vwap_crossings.sum() > 0:
             last_crossing_date = recent_data.index[vwap_crossings.astype(bool)][-1]
-            days_since_crossing = (end_date - last_crossing_date).days
+            days_since_crossing = (end_date.date() - last_crossing_date.date()).days
             
             if days_since_crossing <= lookback_days:
                 last_close = recent_data['Close'].iloc[-1]
@@ -65,14 +73,21 @@ def scan_for_breakout_candidates(symbols, lookback_days=10, volume_threshold=1.5
     end_date = datetime.now()
     start_date = end_date - timedelta(days=lookback_days)
     
-    all_data = fetch_data_in_batches(symbols, start_date, end_date)
+    all_data, found_symbols = fetch_data_in_batches(symbols, start_date, end_date)
     
-    with multiprocessing.Pool() as pool:
-        results = pool.starmap(process_symbol, 
-                               [(symbol, all_data[symbol], start_date, end_date, lookback_days, volume_threshold) 
-                                for symbol in symbols])
+    st.subheader("Symbols Found:")
+    st.write(", ".join(found_symbols))
     
-    breakout_candidates = [result for result in results if result is not None]
+    st.subheader("Symbols Not Found:")
+    not_found_symbols = list(set(symbols) - set(found_symbols))
+    st.write(", ".join(not_found_symbols))
+    
+    breakout_candidates = []
+    for symbol in found_symbols:
+        result = process_symbol(symbol, all_data[symbol], start_date, end_date, lookback_days, volume_threshold)
+        if result:
+            breakout_candidates.append(result)
+    
     return pd.DataFrame(breakout_candidates)
 
 def backtest_breakout_strategy(symbol, start_date, end_date, lookback_days=10, volume_threshold=1.5):
