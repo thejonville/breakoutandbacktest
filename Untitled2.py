@@ -21,6 +21,9 @@ def calculate_anchored_vwap(data, anchor_date):
         anchor_date = data.index[data.index >= anchor_date][0]
     return calculate_vwap(data.loc[anchor_date:])
 
+def calculate_buy_volume(data):
+    return data[data['Close'] > data['Open']]['Volume'].sum()
+
 st.title('Stock Analysis App')
 
 tickers = st.text_input('Enter stock tickers (comma-separated)', 'AAPL,GOOGL,MSFT')
@@ -56,13 +59,16 @@ if st.button('Analyze'):
                     for i in range(-5, 0)
                 )
 
+                buy_volume_2d = calculate_buy_volume(data.iloc[-2:])
+
                 results.append({
                     'Ticker': ticker,
                     'VWAP Decline': vwap_decline,
                     'Crossed Anchored VWAP': crossed_anchored_vwap,
                     'Close': data['Close'].iloc[-1],
                     'VWAP': data['VWAP'].iloc[-1],
-                    'Anchored VWAP': data['Anchored_VWAP'].iloc[-1]
+                    'Anchored VWAP': data['Anchored_VWAP'].iloc[-1],
+                    'Buy Volume (2d)': buy_volume_2d
                 })
             else:
                 st.warning(f"No data available for {ticker}")
@@ -75,11 +81,21 @@ if st.button('Analyze'):
         df_results['Close'] = df_results['Close'].round(2)
         df_results['VWAP'] = df_results['VWAP'].round(2)
         df_results['Anchored VWAP'] = df_results['Anchored VWAP'].round(2)
+        df_results['Buy Volume (2d)'] = df_results['Buy Volume (2d)'].astype(int)
         
         st.subheader('Analysis Results')
-        st.dataframe(df_results)
+        
+        # Sort options
+        sort_column = st.selectbox('Sort by:', ['Buy Volume (2d)', 'Close', 'VWAP', 'Anchored VWAP'])
+        sort_order = st.radio('Sort order:', ['Descending', 'Ascending'])
+        
+        # Sort the dataframe
+        ascending = sort_order == 'Ascending'
+        df_results_sorted = df_results.sort_values(by=sort_column, ascending=ascending)
+        
+        st.dataframe(df_results_sorted)
 
-        filtered_results = df_results[df_results['VWAP Decline'] & df_results['Crossed Anchored VWAP']]
+        filtered_results = df_results_sorted[df_results_sorted['VWAP Decline'] & df_results_sorted['Crossed Anchored VWAP']]
         if not filtered_results.empty:
             st.subheader('Stocks meeting both criteria:')
             st.dataframe(filtered_results)
@@ -94,6 +110,7 @@ st.sidebar.markdown('''
 2. Select the period for analysis (up to 365 days).
 3. Choose the Anchored VWAP start date.
 4. Click 'Analyze' to process the data.
-5. View the results in the main panel.
+5. Sort the results using the dropdown and radio buttons.
+6. View the results in the main panel.
 ''')
 
