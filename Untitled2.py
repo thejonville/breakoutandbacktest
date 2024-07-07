@@ -16,19 +16,19 @@ def calculate_vwap(data):
     return np.cumsum(tp * v) / np.cumsum(v)
 
 def calculate_anchored_vwap(data, anchor_date):
-    anchor_index = data.index.get_loc(anchor_date, method='nearest')
-    return calculate_vwap(data.iloc[anchor_index:])
+    anchor_date = pd.Timestamp(anchor_date)
+    if anchor_date not in data.index:
+        anchor_date = data.index[data.index >= anchor_date][0]
+    return calculate_vwap(data.loc[anchor_date:])
 
 st.title('Stock Analysis App')
 
-# User inputs
 tickers = st.text_input('Enter stock tickers (comma-separated)', 'AAPL,GOOGL,MSFT')
 period = st.slider('Select period (in days)', 1, 365, 30)
 
 end_date = datetime.now()
 start_date = end_date - timedelta(days=period)
 
-# Anchored VWAP date selection
 min_date = start_date
 max_date = end_date
 default_anchor_date = start_date + timedelta(days=period // 2)
@@ -47,7 +47,7 @@ if st.button('Analyze'):
             data = yf.download(ticker, start=start_date, end=end_date)
             if len(data) > 0:
                 data['VWAP'] = calculate_vwap(data)
-                data['Anchored_VWAP'] = calculate_anchored_vwap(data, pd.Timestamp(anchor_date))
+                data['Anchored_VWAP'] = calculate_anchored_vwap(data, anchor_date)
 
                 vwap_decline = data['VWAP'].iloc[-1] < data['VWAP'].iloc[0]
                 crossed_anchored_vwap = any(
@@ -65,6 +65,7 @@ if st.button('Analyze'):
                 st.warning(f"No data available for {ticker}")
         except Exception as e:
             st.error(f"Error processing {ticker}: {str(e)}")
+            st.error(f"Error details: {type(e).__name__}")
 
     if results:
         df_results = pd.DataFrame(results)
